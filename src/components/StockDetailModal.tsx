@@ -2,12 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { X, Star, TrendingUp, TrendingDown } from 'lucide-react';
-import type { StockDetail } from '@/lib/types';
+import type { StockDetail, EntryType } from '@/lib/types';
 import {
   formatPrice, formatPercent, formatMarketCap,
   formatVolume, formatVolumeRatio
 } from '@/lib/utils';
 import { isStrongCandidate } from '@/lib/scorer';
+
+const ENTRY_TYPE_CONFIG: Record<EntryType, { label: string; icon: string; color: string }> = {
+  breakout:  { label: 'BREAKOUT',  icon: '▲', color: 'text-amber-400 bg-amber-950/60 border-amber-700' },
+  recovery:  { label: 'RECOVERY',  icon: '↗', color: 'text-green-400 bg-green-950/60 border-green-700' },
+  dip_buy:   { label: 'DIP BUY',   icon: '↘', color: 'text-blue-400 bg-blue-950/60 border-blue-700' },
+  launchpad: { label: 'LAUNCHPAD', icon: '⬛', color: 'text-red-400 bg-red-950/60 border-red-700' },
+};
 import PriceChart from './PriceChart';
 import MultiBaggerScore from './MultiBaggerScore';
 
@@ -61,7 +68,17 @@ export default function StockDetailModal({
                 )}
               </div>
               {detail && (
-                <p className="text-xs text-gray-400 mt-0.5">{detail.name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-gray-400">{detail.name}</p>
+                  {(() => {
+                    const et = ENTRY_TYPE_CONFIG[detail.entryType];
+                    return (
+                      <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 border rounded ${et.color}`}>
+                        {et.icon} {et.label}
+                      </span>
+                    );
+                  })()}
+                </div>
               )}
             </div>
           </div>
@@ -121,6 +138,85 @@ export default function StockDetailModal({
               <PriceChart symbol={symbol} />
             </div>
 
+            {/* Range position visual — shows where the stock sits in its 52W range */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-500 font-mono">52W RANGE POSITION</span>
+                <span className="text-xs font-mono text-gray-300">
+                  {formatPrice(detail.fiftyTwoWeekLow)} → {formatPrice(detail.fiftyTwoWeekHigh)}
+                </span>
+              </div>
+              <div className="relative h-2 bg-gray-800 rounded-full">
+                <div
+                  className="absolute h-full rounded-full bg-gradient-to-r from-red-600 via-green-500 to-amber-400"
+                  style={{ width: '100%', opacity: 0.3 }}
+                />
+                {/* Current position marker */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white bg-white shadow-lg"
+                  style={{ left: `calc(${detail.rangePosition}% - 6px)` }}
+                />
+              </div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-[10px] font-mono text-red-400">52W LOW</span>
+                <span className="text-xs font-mono text-white font-bold">
+                  {detail.rangePosition.toFixed(0)}% of range
+                </span>
+                <span className="text-[10px] font-mono text-amber-400">52W HIGH</span>
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-xs font-mono text-gray-400">
+                <span>From low: <span className="text-green-400">+{detail.distanceFromLow.toFixed(1)}%</span></span>
+                <span>From high: <span className="text-amber-400">-{detail.proximityToHigh.toFixed(1)}%</span></span>
+              </div>
+            </div>
+
+            {/* Moving Average alignment panel */}
+            {(detail.sma50 > 0 || detail.sma200 > 0) && (() => {
+              const above50  = detail.sma50 > 0 && detail.price > detail.sma50;
+              const above200 = detail.sma200 > 0 && detail.price > detail.sma200;
+              const goldenCross = detail.sma50 > 0 && detail.sma200 > 0 && detail.sma50 > detail.sma200;
+              const spreadPct = detail.sma50 > 0 && detail.sma200 > 0
+                ? ((detail.sma50 - detail.sma200) / detail.sma200 * 100)
+                : null;
+              return (
+                <div>
+                  <div className="text-xs text-gray-500 font-mono mb-2">MOVING AVERAGES</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {detail.sma50 > 0 && (
+                      <Metric
+                        label="SMA 50D"
+                        value={formatPrice(detail.sma50)}
+                        color={above50 ? 'text-amber-400' : 'text-red-400'}
+                        sub={above50 ? '▲ price above' : '▼ price below'}
+                      />
+                    )}
+                    {detail.sma200 > 0 && (
+                      <Metric
+                        label="SMA 200D"
+                        value={formatPrice(detail.sma200)}
+                        color={above200 ? 'text-purple-400' : 'text-red-400'}
+                        sub={above200 ? '▲ price above' : '▼ price below'}
+                      />
+                    )}
+                    {spreadPct != null && (
+                      <Metric
+                        label="50/200 SPREAD"
+                        value={(spreadPct >= 0 ? '+' : '') + spreadPct.toFixed(1) + '%'}
+                        color={goldenCross ? 'text-yellow-400' : 'text-red-400'}
+                        sub={goldenCross ? '★ Golden Cross' : '✕ Death Cross'}
+                      />
+                    )}
+                    <Metric
+                      label="MA STACK"
+                      value={above50 && above200 && goldenCross ? 'Bullish ✓' : above50 || above200 ? 'Mixed' : 'Bearish'}
+                      color={above50 && above200 && goldenCross ? 'text-green-400' : above50 || above200 ? 'text-amber-400' : 'text-red-400'}
+                      sub="price vs 50 & 200D"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Key Metrics */}
             <div>
               <div className="text-xs text-gray-500 font-mono mb-2">KEY METRICS</div>
@@ -128,9 +224,9 @@ export default function StockDetailModal({
                 <Metric label="52W HIGH" value={formatPrice(detail.fiftyTwoWeekHigh)} />
                 <Metric label="52W LOW" value={formatPrice(detail.fiftyTwoWeekLow)} />
                 <Metric
-                  label="PROXIMITY"
-                  value={formatPercent(-detail.proximityToHigh, false) + ' from high'}
-                  color={detail.proximityToHigh <= 2 ? 'text-green-400' : 'text-amber-400'}
+                  label="FROM LOW"
+                  value={'+' + detail.distanceFromLow.toFixed(1) + '%'}
+                  color={detail.distanceFromLow >= 40 ? 'text-green-400' : detail.distanceFromLow >= 15 ? 'text-green-500/80' : 'text-gray-400'}
                 />
                 <Metric
                   label="VOL RATIO"
@@ -193,6 +289,7 @@ export default function StockDetailModal({
                 <ScoreBar label="Volume" value={detail.scoreBreakdown.volumeScore} max={25} />
                 <ScoreBar label="Size Bonus" value={detail.scoreBreakdown.sizeScore} max={15} />
                 <ScoreBar label="Rel Strength" value={detail.scoreBreakdown.relativeStrengthScore} max={10} />
+                <ScoreBar label="MA Align" value={detail.scoreBreakdown.smaScore} max={15} color="#a78bfa" />
               </div>
             </div>
 
@@ -212,11 +309,12 @@ export default function StockDetailModal({
   );
 }
 
-function Metric({ label, value, color = 'text-gray-300' }: { label: string; value: string; color?: string }) {
+function Metric({ label, value, color = 'text-gray-300', sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded p-2">
       <div className="text-xs text-gray-500 font-mono">{label}</div>
       <div className={`text-sm font-mono font-medium mt-0.5 ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-gray-600 font-mono mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -233,13 +331,13 @@ function ReturnMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ScoreBar({ label, value, max }: { label: string; value: number; max: number }) {
+function ScoreBar({ label, value, max, color = '#f59e0b' }: { label: string; value: number; max: number; color?: string }) {
   const pct = Math.round((value / max) * 100);
   return (
     <div className="flex items-center gap-2">
       <div className="w-24 text-xs font-mono text-gray-400 text-right">{label}</div>
       <div className="flex-1 h-1.5 bg-gray-800 rounded overflow-hidden">
-        <div className="h-full bg-amber-500 rounded" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <div className="w-12 text-xs font-mono text-gray-300 text-right">{value}/{max}</div>
     </div>

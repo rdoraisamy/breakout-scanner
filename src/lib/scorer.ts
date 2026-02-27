@@ -44,6 +44,45 @@ function relativeStrengthScore(return1M: number): number {
   return 0;
 }
 
+// SMA alignment bonus (0-15 pts).
+// Rewards stocks where the moving average stack is bullishly aligned.
+//
+// The ideal setup (as seen in major breakouts like ASML recovering from lows):
+//   price > SMA50 > SMA200 = fully bullish stack, golden cross in place
+//
+// Convergence note: when SMA50 is close to SMA200 (within 2%), the cross is
+// imminent — this is a high-potential setup even before full alignment.
+function smaAlignmentScore(price: number, sma50: number, sma200: number): number {
+  if (!sma50 || !sma200 || sma50 === 0 || sma200 === 0) return 0;
+
+  const aboveSma50 = price > sma50;
+  const aboveSma200 = price > sma200;
+  const goldenCross = sma50 > sma200;   // 50D above 200D = long-term bullish
+  const spreadPct = Math.abs((sma50 - sma200) / sma200) * 100;
+  const convergingCross = !goldenCross && spreadPct < 2; // SMAs converging, cross imminent
+
+  // Fully aligned bullish stack: price > SMA50 > SMA200
+  if (aboveSma50 && aboveSma200 && goldenCross) return 15;
+
+  // Golden cross in place, price above long-term MA (short-term MA lagging)
+  if (aboveSma200 && goldenCross) return 11;
+
+  // Golden cross in place, price above 50D (recovering through SMAs)
+  if (aboveSma50 && goldenCross) return 9;
+
+  // SMA50 converging toward SMA200 from below — imminent golden cross
+  if (convergingCross && (aboveSma50 || aboveSma200)) return 8;
+
+  // Price reclaimed 200D MA (major recovery signal, death cross still in place)
+  if (aboveSma200 && !goldenCross) return 6;
+
+  // Price above 50D only, death cross below
+  if (aboveSma50 && !goldenCross) return 3;
+
+  // Below both SMAs
+  return 0;
+}
+
 export function computeScore(stock: Omit<StockResult, 'multiBaggerScore' | 'scoreBreakdown'>): {
   multiBaggerScore: number;
   scoreBreakdown: ScoreBreakdown;
@@ -54,6 +93,7 @@ export function computeScore(stock: Omit<StockResult, 'multiBaggerScore' | 'scor
     volumeScore: volumeScore(stock.volumeRatio),
     sizeScore: sizeScore(stock.marketCapCategory),
     relativeStrengthScore: relativeStrengthScore(stock.return1M),
+    smaScore: smaAlignmentScore(stock.price, stock.sma50, stock.sma200),
   };
 
   const total = clamp(
@@ -61,7 +101,8 @@ export function computeScore(stock: Omit<StockResult, 'multiBaggerScore' | 'scor
     breakdown.momentumScore +
     breakdown.volumeScore +
     breakdown.sizeScore +
-    breakdown.relativeStrengthScore,
+    breakdown.relativeStrengthScore +
+    breakdown.smaScore,
     0,
     100
   );

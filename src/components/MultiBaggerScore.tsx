@@ -38,6 +38,7 @@ export default function MultiBaggerScore({ score, breakdown }: MultiBaggerScoreP
           <ScoreRow label="Volume" value={breakdown.volumeScore} max={25} />
           <ScoreRow label="Size" value={breakdown.sizeScore} max={15} />
           <ScoreRow label="Rel Strength" value={breakdown.relativeStrengthScore} max={10} />
+          <ScoreRow label="MA Align" value={breakdown.smaScore} max={15} color="#a78bfa" />
           <div className="mt-2 pt-2 border-t border-gray-700 flex justify-between">
             <span className="text-gray-500">TOTAL</span>
             <span className={strong ? 'text-green-400 font-bold' : 'text-amber-400'}>{score}/100</span>
@@ -50,7 +51,7 @@ export default function MultiBaggerScore({ score, breakdown }: MultiBaggerScoreP
     </div>
   );
 
-  function ScoreRow({ label, value, max }: { label: string; value: number; max: number }) {
+  function ScoreRow({ label, value, max, color = '#f59e0b' }: { label: string; value: number; max: number; color?: string }) {
     return (
       <div className="mb-1.5">
         <div className="flex justify-between mb-0.5">
@@ -59,8 +60,8 @@ export default function MultiBaggerScore({ score, breakdown }: MultiBaggerScoreP
         </div>
         <div className="h-1 bg-gray-800 rounded overflow-hidden">
           <div
-            className="h-full bg-amber-500 rounded"
-            style={{ width: barWidth(value, max) }}
+            className="h-full rounded"
+            style={{ width: barWidth(value, max), backgroundColor: color }}
           />
         </div>
       </div>

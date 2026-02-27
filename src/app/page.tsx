@@ -15,6 +15,8 @@ const DEFAULT_FILTERS: FilterState = {
   minVolRatio: 0,
   marketCap: 'all',
   sector: 'all',
+  entryType: 'breakout',
+  smaFilter: 'any',
 };
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -55,6 +57,8 @@ export default function ScannerPage() {
       minVolRatio: filters.minVolRatio.toString(),
       marketCap: filters.marketCap,
       sector: filters.sector,
+      entryType: filters.entryType,
+      smaFilter: filters.smaFilter,
     });
 
     try {

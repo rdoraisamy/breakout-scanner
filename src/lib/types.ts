@@ -4,9 +4,13 @@ export interface ScoreBreakdown {
   volumeScore: number;          // volume surge (0-25)
   sizeScore: number;            // market cap bonus (0-15)
   relativeStrengthScore: number; // vs sector (0-10)
+  smaScore: number;             // SMA alignment bonus (0-15)
 }
 
 export type MarketCapCategory = 'micro' | 'small' | 'mid' | 'large' | 'mega';
+
+// Entry opportunity type — what kind of setup does this stock represent
+export type EntryType = 'breakout' | 'recovery' | 'dip_buy' | 'launchpad';
 
 export interface StockResult {
   symbol: string;
@@ -17,6 +21,9 @@ export interface StockResult {
   fiftyTwoWeekHigh: number;
   fiftyTwoWeekLow: number;
   proximityToHigh: number;      // % below 52-week high
+  rangePosition: number;        // % position in 52W range (0=at low, 100=at high)
+  distanceFromLow: number;      // % above 52W low (recovery amount)
+  entryType: EntryType;         // classified entry opportunity
   volume: number;
   avgVolume: number;
   volumeRatio: number;          // volume / avgVolume
@@ -24,6 +31,8 @@ export interface StockResult {
   marketCapCategory: MarketCapCategory;
   sector: string;
   industry: string;
+  sma50: number;                // 50-day simple moving average (0 if unavailable)
+  sma200: number;               // 200-day simple moving average (0 if unavailable)
   return1M: number;             // 1-month price return %
   return3M: number;
   return6M: number;
@@ -64,15 +73,21 @@ export type SortField =
   | 'price'
   | 'changePercent'
   | 'proximityToHigh'
+  | 'rangePosition'
+  | 'distanceFromLow'
   | 'volumeRatio'
   | 'marketCap'
   | 'multiBaggerScore';
 
 export type SortDirection = 'asc' | 'desc';
 
+export type SmaFilter = 'any' | 'above_50' | 'above_200' | 'above_both' | 'golden_cross';
+
 export interface FilterState {
-  proximity: number;        // max % below 52-week high
+  proximity: number;              // max % below 52-week high (breakout mode)
   minVolRatio: number;
   marketCap: 'all' | MarketCapCategory;
   sector: string;
+  entryType: 'all' | EntryType;  // which entry opportunity type to show
+  smaFilter: SmaFilter;          // moving average alignment filter
 }

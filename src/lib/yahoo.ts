@@ -1,5 +1,5 @@
 import YahooFinanceClass from 'yahoo-finance2';
-import type { StockResult, StockDetail, ChartDataPoint } from './types';
+import type { StockResult, StockDetail, ChartDataPoint, EntryType } from './types';
 import { classifyMarketCap, sleep } from './utils';
 import { computeScore } from './scorer';
 
@@ -25,6 +25,35 @@ function getNum(obj: AnyRecord | undefined, key: string): number | undefined {
 function computeProximity(price: number, high: number): number {
   if (!high || high === 0) return 100;
   return Math.max(0, ((high - price) / high) * 100);
+}
+
+// % position in the 52W high-low range (0 = at low, 100 = at high)
+function computeRangePosition(price: number, low52: number, high52: number): number {
+  if (!high52 || !low52 || high52 === low52) return 50;
+  return Math.max(0, Math.min(100, ((price - low52) / (high52 - low52)) * 100));
+}
+
+// % above the 52W low (how much the stock has recovered from its annual bottom)
+function computeDistanceFromLow(price: number, low52: number): number {
+  if (!low52 || low52 === 0) return 0;
+  return Math.max(0, ((price - low52) / low52) * 100);
+}
+
+// Classify the entry opportunity type based on position in the 52W range.
+//
+// ASML pattern: stock fell from ~$1100 to ~$600 (near 52W low), then nearly
+// doubled. Launchpad catches it at the bottom; Recovery catches mid-bounce.
+//
+// Ranges:
+//   launchpad  — bottom 20% of range: near 52W low, potential reversal
+//   recovery   — 20-55% of range: bouncing from lows, momentum building
+//   dip_buy    — 55-95% of range: upper half, pulled back from recent highs
+//   breakout   — top 5% of range: within 5% of 52W high
+function classifyEntryType(proximityToHigh: number, rangePosition: number): EntryType {
+  if (proximityToHigh <= 5) return 'breakout';
+  if (rangePosition < 20) return 'launchpad';
+  if (rangePosition < 55) return 'recovery';
+  return 'dip_buy';
 }
 
 function estimateReturns(price: number, low52: number, high52: number): {
@@ -63,9 +92,16 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
   const symbol = (q.symbol as string | undefined) ?? fallbackSymbol;
 
   const proximityToHigh = computeProximity(price, high52);
+  const rangePosition = computeRangePosition(price, low52, high52);
+  const distanceFromLow = computeDistanceFromLow(price, low52);
+  const entryType = classifyEntryType(proximityToHigh, rangePosition);
   const volumeRatio = avgVolume > 0 ? volume / avgVolume : 0;
   const marketCapCategory = classifyMarketCap(marketCap);
   const { return1M, return3M, return6M } = estimateReturns(price, low52, high52);
+
+  // Yahoo Finance provides 50-day and 200-day SMAs directly in the quote response
+  const sma50 = (q.fiftyDayAverage as number | undefined) ?? 0;
+  const sma200 = (q.twoHundredDayAverage as number | undefined) ?? 0;
 
   return {
     symbol,
@@ -76,6 +112,9 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
     fiftyTwoWeekHigh: high52,
     fiftyTwoWeekLow: low52,
     proximityToHigh,
+    rangePosition,
+    distanceFromLow,
+    entryType,
     volume,
     avgVolume,
     volumeRatio,
@@ -83,6 +122,8 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
     marketCapCategory,
     sector: (q.sector as string | undefined) ?? 'Unknown',
     industry: (q.industry as string | undefined) ?? 'Unknown',
+    sma50,
+    sma200,
     return1M,
     return3M,
     return6M,
