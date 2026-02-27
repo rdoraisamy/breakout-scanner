@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import type { ChartDataPoint } from '@/lib/types';
 import { formatPrice } from '@/lib/utils';

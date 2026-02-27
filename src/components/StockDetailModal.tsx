@@ -34,9 +34,12 @@ export default function StockDetailModal({
 
   useEffect(() => {
     fetch(`/api/stock/${symbol}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((d) => { setDetail(d); setLoading(false); })
-      .catch(() => { setError('Failed to load stock data'); setLoading(false); });
+      .catch((e) => { setError(e.message ?? 'Failed to load stock data'); setLoading(false); });
   }, [symbol]);
 
   // Close on Escape
@@ -71,7 +74,7 @@ export default function StockDetailModal({
                 <div className="flex items-center gap-2 mt-0.5">
                   <p className="text-xs text-gray-400">{detail.name}</p>
                   {(() => {
-                    const et = ENTRY_TYPE_CONFIG[detail.entryType];
+                    const et = ENTRY_TYPE_CONFIG[detail.entryType] ?? ENTRY_TYPE_CONFIG['breakout'];
                     return (
                       <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 border rounded ${et.color}`}>
                         {et.icon} {et.label}

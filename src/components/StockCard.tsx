@@ -88,12 +88,19 @@ interface StockCardProps {
   onClick: () => void;
 }
 
-// Colour the range position bar based on where the stock sits in its 52W range
-function rangePositionColor(pos: number): string {
-  if (pos >= 80) return 'text-amber-400';    // near 52W high — breakout zone
-  if (pos >= 55) return 'text-blue-400';     // upper half — dip buy zone
-  if (pos >= 20) return 'text-green-400';    // lower-mid — recovery zone
-  return 'text-red-400';                      // near 52W low — launchpad
+// Colour the range position based on where the stock sits in its 52W range
+function rangePositionTextColor(pos: number): string {
+  if (pos >= 80) return 'text-amber-400';
+  if (pos >= 55) return 'text-blue-400';
+  if (pos >= 20) return 'text-green-400';
+  return 'text-red-400';
+}
+
+function rangePositionBgColor(pos: number): string {
+  if (pos >= 80) return 'bg-amber-400';
+  if (pos >= 55) return 'bg-blue-400';
+  if (pos >= 20) return 'bg-green-400';
+  return 'bg-red-400';
 }
 
 // Colour the distance-from-low based on recovery magnitude
@@ -106,7 +113,7 @@ function distanceFromLowColor(pct: number): string {
 
 export default function StockCard({ stock, onClick }: StockCardProps) {
   const pos = stock.changePercent >= 0;
-  const et = ENTRY_TYPE_CONFIG[stock.entryType];
+  const et = ENTRY_TYPE_CONFIG[stock.entryType] ?? ENTRY_TYPE_CONFIG['breakout'];
 
   return (
     <tr
@@ -148,13 +155,13 @@ export default function StockCard({ stock, onClick }: StockCardProps) {
       {/* Range % — position in 52W high-low range */}
       <td className="px-3 py-2.5 text-right">
         <div className="flex flex-col items-end gap-0.5">
-          <span className={`font-mono text-xs font-medium ${rangePositionColor(stock.rangePosition)}`}>
+          <span className={`font-mono text-xs font-medium ${rangePositionTextColor(stock.rangePosition)}`}>
             {stock.rangePosition.toFixed(0)}%
           </span>
           {/* Mini range bar */}
           <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full ${rangePositionColor(stock.rangePosition).replace('text-', 'bg-')}`}
+              className={`h-full rounded-full ${rangePositionBgColor(stock.rangePosition)}`}
               style={{ width: `${Math.max(2, stock.rangePosition)}%` }}
             />
           </div>
