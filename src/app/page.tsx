@@ -1,65 +1,210 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { RefreshCw, Activity } from 'lucide-react';
+import type { StockResult, FilterState } from '@/lib/types';
+import MarketStatus from '@/components/MarketStatus';
+import StatsBar from '@/components/StatsBar';
+import FilterBar from '@/components/FilterBar';
+import ScannerTable from '@/components/ScannerTable';
+import StockDetailModal from '@/components/StockDetailModal';
+import WatchlistPanel from '@/components/WatchlistPanel';
+
+const DEFAULT_FILTERS: FilterState = {
+  proximity: 5,
+  minVolRatio: 0,
+  marketCap: 'all',
+  sector: 'all',
+};
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+
+export default function ScannerPage() {
+  const [stocks, setStocks] = useState<StockResult[]>([]);
+  const [totalScanned, setTotalScanned] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [countdown, setCountdown] = useState(AUTO_REFRESH_MS / 1000);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load watchlist from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('watchlist');
+      if (saved) setWatchlist(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const saveWatchlist = (list: string[]) => {
+    setWatchlist(list);
+    try { localStorage.setItem('watchlist', JSON.stringify(list)); } catch {}
+  };
+
+  const fetchData = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    const params = new URLSearchParams({
+      proximity: filters.proximity.toString(),
+      minVolRatio: filters.minVolRatio.toString(),
+      marketCap: filters.marketCap,
+      sector: filters.sector,
+    });
+
+    try {
+      const res = await fetch(`/api/scanner?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setStocks(data.stocks ?? []);
+      setTotalScanned(data.totalScanned ?? 0);
+      setLastUpdated(data.lastUpdated ?? null);
+      setCountdown(AUTO_REFRESH_MS / 1000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [filters]);
+
+  // Initial fetch + refetch on filter change
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh countdown
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          fetchData(true);
+          return AUTO_REFRESH_MS / 1000;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [fetchData]);
+
+  const handleManualRefresh = () => {
+    setCountdown(AUTO_REFRESH_MS / 1000);
+    fetchData(true);
+  };
+
+  const handleAddToWatchlist = (symbol: string) => {
+    if (watchlist.includes(symbol)) {
+      saveWatchlist(watchlist.filter((s) => s !== symbol));
+    } else {
+      saveWatchlist([...watchlist, symbol]);
+    }
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gray-950 flex flex-col">
+      {/* Top Bar */}
+      <header className="bg-gray-950 border-b border-gray-800 sticky top-0 z-40">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Activity size={18} className="text-amber-400" />
+              <span className="font-mono font-bold text-white tracking-wider text-sm">
+                BREAKOUT SCANNER
+              </span>
+            </div>
+            <div className="hidden sm:block w-px h-4 bg-gray-700" />
+            <div className="hidden sm:block">
+              <MarketStatus />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {lastUpdated && (
+              <span className="hidden sm:inline text-xs font-mono text-gray-600">
+                Updated {new Date(lastUpdated).toLocaleTimeString()}
+              </span>
+            )}
+            <span className="text-xs font-mono text-gray-600">
+              {formatTime(countdown)}
+            </span>
+            <button
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 text-gray-300 rounded transition-colors disabled:opacity-50"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Scanning...' : 'Refresh'}
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <StatsBar stocks={stocks} totalScanned={totalScanned} />
+        <FilterBar filters={filters} onChange={setFilters} />
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Scanner Table */}
+        <div className="flex-1 overflow-auto">
+          {error ? (
+            <div className="p-8 text-center">
+              <div className="text-red-400 font-mono text-sm mb-2">Error: {error}</div>
+              <button
+                onClick={() => fetchData()}
+                className="text-xs font-mono text-gray-400 hover:text-white underline"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <ScannerTable
+              stocks={stocks}
+              loading={loading}
+              onSelectStock={setSelectedSymbol}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
         </div>
+
+        {/* Watchlist Sidebar */}
+        <aside className="hidden lg:block w-64 border-l border-gray-800 overflow-y-auto p-3 flex-shrink-0">
+          <WatchlistPanel
+            symbols={watchlist}
+            onRemove={(s) => saveWatchlist(watchlist.filter((x) => x !== s))}
+            onSelect={setSelectedSymbol}
+          />
+        </aside>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-800 px-4 py-2 flex items-center justify-between">
+        <span className="text-xs font-mono text-gray-600">
+          Data via Yahoo Finance · For informational purposes only
+        </span>
+        <span className="text-xs font-mono text-gray-700">
+          Score ≥ 70 = Strong Multi-Bagger Candidate
+        </span>
+      </footer>
+
+      {/* Stock Detail Modal */}
+      {selectedSymbol && (
+        <StockDetailModal
+          symbol={selectedSymbol}
+          onClose={() => setSelectedSymbol(null)}
+          onAddToWatchlist={handleAddToWatchlist}
+          isWatchlisted={watchlist.includes(selectedSymbol)}
+        />
+      )}
     </div>
   );
 }
