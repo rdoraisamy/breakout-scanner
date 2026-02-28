@@ -104,8 +104,9 @@ export async function GET(req: NextRequest) {
         if (s.sma20 === 0 || s.smaSpread >= 10) return false;
       }
       if (smaFilter === 'squeeze_breakout') {
-        // Squeezed MAs (within 10%) AND price has crossed above SMA20 (the breakout)
+        // Squeezed MAs (within 10%) AND price crossed above SMA20 within the last 20 trading days
         if (s.sma20 === 0 || s.smaSpread >= 10 || !aboveSma20) return false;
+        if (s.smaBreakoutDaysAgo < 0 || s.smaBreakoutDaysAgo > 20) return false;
       }
     }
 

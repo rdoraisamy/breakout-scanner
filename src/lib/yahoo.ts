@@ -135,6 +135,7 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
     sma50,
     sma200,
     smaSpread,
+    smaBreakoutDaysAgo: -1,
     return1M,
     return3M,
     return6M,
@@ -270,6 +271,29 @@ export async function enrichWithSma20(stocks: StockResult[]): Promise<void> {
         const hi = Math.max(...vals);
         const lo = Math.min(...vals);
         stock.smaSpread = lo > 0 ? ((hi - lo) / lo) * 100 : 100;
+      }
+
+      // Detect the most recent SMA20 crossover within the last 20 trading days.
+      // Requires 40 closes: 20 for rolling SMA20 base + 20-day lookback window.
+      stock.smaBreakoutDaysAgo = -1;
+      if (closes.length >= 40) {
+        const window = closes.slice(-40);
+        // Build rolling SMA20 + corresponding price for positions 19..39
+        const rollingPrices: number[] = [];
+        const rollingSmas: number[] = [];
+        for (let i = 19; i < window.length; i++) {
+          rollingPrices.push(window[i]);
+          rollingSmas.push(window.slice(i - 19, i + 1).reduce((s, p) => s + p, 0) / 20);
+        }
+        // Scan backwards from today — find first (most recent) upward crossover
+        for (let i = rollingPrices.length - 1; i >= 1; i--) {
+          const daysAgo = rollingPrices.length - 1 - i;
+          if (daysAgo > 20) break;
+          if (rollingPrices[i] > rollingSmas[i] && rollingPrices[i - 1] <= rollingSmas[i - 1]) {
+            stock.smaBreakoutDaysAgo = daysAgo;
+            break;
+          }
+        }
       }
     }));
   }

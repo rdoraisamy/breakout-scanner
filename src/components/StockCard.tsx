@@ -9,8 +9,8 @@ import {
 import MultiBaggerScore from './MultiBaggerScore';
 
 // MA alignment indicator — shows 50D, 200D SMA status and squeeze convergence
-function MaIndicators({ price, sma20, sma50, sma200, smaSpread }: {
-  price: number; sma20: number; sma50: number; sma200: number; smaSpread: number;
+function MaIndicators({ price, sma20, sma50, sma200, smaSpread, smaBreakoutDaysAgo }: {
+  price: number; sma20: number; sma50: number; sma200: number; smaSpread: number; smaBreakoutDaysAgo: number;
 }) {
   const above50 = sma50 > 0 && price > sma50;
   const above200 = sma200 > 0 && price > sma200;
@@ -18,17 +18,19 @@ function MaIndicators({ price, sma20, sma50, sma200, smaSpread }: {
   const goldenCross = sma50 > 0 && sma200 > 0 && sma50 > sma200;
   const isSqueeze = sma20 > 0 && smaSpread < 10;
   const isTightSqueeze = sma20 > 0 && smaSpread < 5;
+  const recentBreakout = smaBreakoutDaysAgo >= 0 && smaBreakoutDaysAgo <= 20;
+  const daysLabel = recentBreakout ? ` ${smaBreakoutDaysAgo === 0 ? 'today' : `${smaBreakoutDaysAgo}d`}` : '';
 
   return (
-    <div className="flex items-center gap-1 mt-0.5" title={`SMA20: ${sma20 > 0 ? sma20.toFixed(2) : 'N/A'} | SMA50: ${sma50.toFixed(2)} | SMA200: ${sma200.toFixed(2)}${goldenCross ? ' | Golden Cross ★' : ''}${isSqueeze ? ` | Squeeze ${smaSpread.toFixed(1)}%` : ''}`}>
+    <div className="flex items-center gap-1 mt-0.5" title={`SMA20: ${sma20 > 0 ? sma20.toFixed(2) : 'N/A'} | SMA50: ${sma50.toFixed(2)} | SMA200: ${sma200.toFixed(2)}${goldenCross ? ' | Golden Cross ★' : ''}${isSqueeze ? ` | Squeeze ${smaSpread.toFixed(1)}%` : ''}${recentBreakout ? ` | Broke above SMA20 ${daysLabel} ago` : ''}`}>
       {isTightSqueeze && (
-        <span className={`text-[8px] font-mono px-0.5 rounded font-bold ${above20 ? 'text-cyan-300 bg-cyan-950/70' : 'text-cyan-600 bg-cyan-950/40'}`}>
-          {above20 ? '⟨SQZ BRK⟩' : '⟨SQZ⟩'}
+        <span className={`text-[8px] font-mono px-0.5 rounded font-bold ${recentBreakout ? 'text-cyan-200 bg-cyan-800/70' : above20 ? 'text-cyan-300 bg-cyan-950/70' : 'text-cyan-600 bg-cyan-950/40'}`}>
+          {recentBreakout ? `⟨SQZ BRK${daysLabel}⟩` : above20 ? '⟨SQZ⟩' : '⟨SQZ⟩'}
         </span>
       )}
       {!isTightSqueeze && isSqueeze && (
-        <span className={`text-[8px] font-mono px-0.5 rounded ${above20 ? 'text-cyan-400 bg-cyan-950/50' : 'text-cyan-700 bg-cyan-950/30'}`}>
-          {above20 ? 'SQZ↑' : 'SQZ'}
+        <span className={`text-[8px] font-mono px-0.5 rounded ${recentBreakout ? 'text-cyan-300 bg-cyan-900/50' : above20 ? 'text-cyan-400 bg-cyan-950/50' : 'text-cyan-700 bg-cyan-950/30'}`}>
+          {recentBreakout ? `SQZ BRK${daysLabel}` : above20 ? 'SQZ↑' : 'SQZ'}
         </span>
       )}
       {sma50 > 0 && (
@@ -146,7 +148,7 @@ export default function StockCard({ stock, onClick }: StockCardProps) {
           </span>
           {/* MA alignment dots: 50D, 200D (Yahoo quote API) + squeeze badge if SMA20 enriched */}
           {(stock.sma50 > 0 || stock.sma200 > 0) && (
-            <MaIndicators price={stock.price} sma20={stock.sma20} sma50={stock.sma50} sma200={stock.sma200} smaSpread={stock.smaSpread} />
+            <MaIndicators price={stock.price} sma20={stock.sma20} sma50={stock.sma50} sma200={stock.sma200} smaSpread={stock.smaSpread} smaBreakoutDaysAgo={stock.smaBreakoutDaysAgo} />
           )}
         </div>
       </td>

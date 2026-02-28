@@ -35,6 +35,7 @@ export interface StockResult {
   sma50: number;                // 50-day SMA (from Yahoo quote API)
   sma200: number;               // 200-day SMA (from Yahoo quote API)
   smaSpread: number;            // max spread % across available SMAs — convergence metric
+  smaBreakoutDaysAgo: number;   // trading days since price crossed above SMA20 (-1 = no recent crossover)
   return1M: number;             // 1-month price return %
   return3M: number;
   return6M: number;
