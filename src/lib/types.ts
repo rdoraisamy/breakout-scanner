@@ -31,8 +31,10 @@ export interface StockResult {
   marketCapCategory: MarketCapCategory;
   sector: string;
   industry: string;
-  sma50: number;                // 50-day simple moving average (0 if unavailable)
-  sma200: number;               // 200-day simple moving average (0 if unavailable)
+  sma20: number;                // 20-day SMA (0 unless enriched by squeeze scanner)
+  sma50: number;                // 50-day SMA (from Yahoo quote API)
+  sma200: number;               // 200-day SMA (from Yahoo quote API)
+  smaSpread: number;            // max spread % across available SMAs — convergence metric
   return1M: number;             // 1-month price return %
   return3M: number;
   return6M: number;
@@ -81,7 +83,16 @@ export type SortField =
 
 export type SortDirection = 'asc' | 'desc';
 
-export type SmaFilter = 'any' | 'above_50' | 'above_200' | 'above_both' | 'golden_cross';
+// 'squeeze_*' modes trigger a two-pass scan: batch quotes → chart data for SMA20
+export type SmaFilter =
+  | 'any'
+  | 'above_50'
+  | 'above_200'
+  | 'above_both'
+  | 'golden_cross'
+  | 'squeeze_5'         // SMA20/50/200 all within 5% of each other
+  | 'squeeze_10'        // SMA20/50/200 all within 10%
+  | 'squeeze_breakout'; // within 10% AND price crossed above SMA20 (breakout signal)
 
 export interface FilterState {
   proximity: number;              // max % below 52-week high (breakout mode)

@@ -8,14 +8,29 @@ import {
 } from '@/lib/utils';
 import MultiBaggerScore from './MultiBaggerScore';
 
-// MA alignment indicator — shows 50D and 200D SMA status relative to price
-function MaIndicators({ price, sma50, sma200 }: { price: number; sma50: number; sma200: number }) {
+// MA alignment indicator — shows 50D, 200D SMA status and squeeze convergence
+function MaIndicators({ price, sma20, sma50, sma200, smaSpread }: {
+  price: number; sma20: number; sma50: number; sma200: number; smaSpread: number;
+}) {
   const above50 = sma50 > 0 && price > sma50;
   const above200 = sma200 > 0 && price > sma200;
+  const above20 = sma20 > 0 && price > sma20;
   const goldenCross = sma50 > 0 && sma200 > 0 && sma50 > sma200;
+  const isSqueeze = sma20 > 0 && smaSpread < 10;
+  const isTightSqueeze = sma20 > 0 && smaSpread < 5;
 
   return (
-    <div className="flex items-center gap-1 mt-0.5" title={`SMA50: ${sma50.toFixed(2)} | SMA200: ${sma200.toFixed(2)}${goldenCross ? ' | Golden Cross ★' : ''}`}>
+    <div className="flex items-center gap-1 mt-0.5" title={`SMA20: ${sma20 > 0 ? sma20.toFixed(2) : 'N/A'} | SMA50: ${sma50.toFixed(2)} | SMA200: ${sma200.toFixed(2)}${goldenCross ? ' | Golden Cross ★' : ''}${isSqueeze ? ` | Squeeze ${smaSpread.toFixed(1)}%` : ''}`}>
+      {isTightSqueeze && (
+        <span className={`text-[8px] font-mono px-0.5 rounded font-bold ${above20 ? 'text-cyan-300 bg-cyan-950/70' : 'text-cyan-600 bg-cyan-950/40'}`}>
+          {above20 ? '⟨SQZ BRK⟩' : '⟨SQZ⟩'}
+        </span>
+      )}
+      {!isTightSqueeze && isSqueeze && (
+        <span className={`text-[8px] font-mono px-0.5 rounded ${above20 ? 'text-cyan-400 bg-cyan-950/50' : 'text-cyan-700 bg-cyan-950/30'}`}>
+          {above20 ? 'SQZ↑' : 'SQZ'}
+        </span>
+      )}
       {sma50 > 0 && (
         <span className={`text-[8px] font-mono px-0.5 rounded ${above50 ? 'text-amber-400 bg-amber-950/50' : 'text-gray-600 bg-gray-900'}`}>
           50{above50 ? '↑' : '↓'}
@@ -129,9 +144,9 @@ export default function StockCard({ stock, onClick }: StockCardProps) {
           <span className={`inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold px-1 py-0.5 border rounded w-fit ${et.color}`}>
             {et.icon} {et.label}
           </span>
-          {/* MA alignment dots: 50D and 200D (provided by Yahoo quote API) */}
+          {/* MA alignment dots: 50D, 200D (Yahoo quote API) + squeeze badge if SMA20 enriched */}
           {(stock.sma50 > 0 || stock.sma200 > 0) && (
-            <MaIndicators price={stock.price} sma50={stock.sma50} sma200={stock.sma200} />
+            <MaIndicators price={stock.price} sma20={stock.sma20} sma50={stock.sma50} sma200={stock.sma200} smaSpread={stock.smaSpread} />
           )}
         </div>
       </td>

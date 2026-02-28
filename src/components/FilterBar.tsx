@@ -24,11 +24,14 @@ const MARKET_CAPS: { label: string; value: FilterState['marketCap'] }[] = [
 
 const PROXIMITIES = [1, 2, 3, 5, 10];
 const SMA_FILTERS: { label: string; value: SmaFilter; desc: string }[] = [
-  { label: 'Any',         value: 'any',         desc: 'No MA filter' },
-  { label: 'Above 50D',   value: 'above_50',    desc: 'Price > SMA50' },
-  { label: 'Above 200D',  value: 'above_200',   desc: 'Price > SMA200 (above long-term MA)' },
-  { label: 'Above Both',  value: 'above_both',  desc: 'Price > SMA50 & SMA200 — bullish stack' },
-  { label: 'Golden Cross',value: 'golden_cross',desc: 'SMA50 > SMA200 — major bullish signal' },
+  { label: 'Any',          value: 'any',             desc: 'No MA filter' },
+  { label: 'Above 50D',    value: 'above_50',         desc: 'Price > SMA50' },
+  { label: 'Above 200D',   value: 'above_200',        desc: 'Price > SMA200 (above long-term MA)' },
+  { label: 'Above Both',   value: 'above_both',       desc: 'Price > SMA50 & SMA200 — bullish stack' },
+  { label: 'Golden Cross', value: 'golden_cross',     desc: 'SMA50 > SMA200 — major bullish signal' },
+  { label: 'Squeeze 5%',   value: 'squeeze_5',        desc: 'SMA20/50/200 within 5% of each other — tight compression' },
+  { label: 'Squeeze 10%',  value: 'squeeze_10',       desc: 'SMA20/50/200 within 10% — convergence zone' },
+  { label: 'Squeeze BRK',  value: 'squeeze_breakout', desc: 'MAs squeezed + price above SMA20 — explosive breakout signal' },
 ];
 const VOL_RATIOS = [
   { label: 'Any Volume', value: 0 },

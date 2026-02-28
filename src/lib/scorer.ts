@@ -44,42 +44,59 @@ function relativeStrengthScore(return1M: number): number {
   return 0;
 }
 
-// SMA alignment bonus (0-15 pts).
-// Rewards stocks where the moving average stack is bullishly aligned.
+// SMA alignment + squeeze breakout bonus (0-15 pts).
 //
-// The ideal setup (as seen in major breakouts like ASML recovering from lows):
-//   price > SMA50 > SMA200 = fully bullish stack, golden cross in place
+// The highest-scoring setup is the squeeze breakout:
+//   SMA20 ≈ SMA50 ≈ SMA200 (within ~5%) → price breaks above SMA20
+//   → SMAs start diverging outward (the explosive expansion after compression)
 //
-// Convergence note: when SMA50 is close to SMA200 (within 2%), the cross is
-// imminent — this is a high-potential setup even before full alignment.
-function smaAlignmentScore(price: number, sma50: number, sma200: number): number {
-  if (!sma50 || !sma200 || sma50 === 0 || sma200 === 0) return 0;
+// When SMA20 is not available (batch scan mode), falls back to SMA50/SMA200.
+function smaAlignmentScore(
+  price: number,
+  sma20: number,
+  sma50: number,
+  sma200: number,
+  smaSpread: number,
+): number {
+  if (sma50 === 0 && sma200 === 0) return 0;
 
-  const aboveSma50 = price > sma50;
-  const aboveSma200 = price > sma200;
-  const goldenCross = sma50 > sma200;   // 50D above 200D = long-term bullish
-  const spreadPct = Math.abs((sma50 - sma200) / sma200) * 100;
-  const convergingCross = !goldenCross && spreadPct < 2; // SMAs converging, cross imminent
+  const hasSma20 = sma20 > 0;
+  const aboveSma20  = hasSma20 && price > sma20;
+  const aboveSma50  = sma50 > 0 && price > sma50;
+  const aboveSma200 = sma200 > 0 && price > sma200;
+  const goldenCross = sma50 > 0 && sma200 > 0 && sma50 > sma200;
+  const sma20AboveSma50 = hasSma20 && sma50 > 0 && sma20 > sma50;
 
-  // Fully aligned bullish stack: price > SMA50 > SMA200
-  if (aboveSma50 && aboveSma200 && goldenCross) return 15;
+  // ── Squeeze breakout: all three SMAs converged then price ripped above ──────
+  // This is the most powerful signal — tight compression followed by expansion.
+  if (hasSma20 && smaSpread < 5 && aboveSma20 && sma20AboveSma50 && aboveSma50 && aboveSma200) return 15;
+  if (hasSma20 && smaSpread < 10 && aboveSma20 && aboveSma50) return 13;
 
-  // Golden cross in place, price above long-term MA (short-term MA lagging)
-  if (aboveSma200 && goldenCross) return 11;
+  // ── Classic bullish stack (no SMA20 squeeze needed) ──────────────────────────
+  // Full stack: price > SMA20 > SMA50 > SMA200
+  if (hasSma20 && aboveSma20 && sma20AboveSma50 && aboveSma50 && aboveSma200 && goldenCross) return 14;
 
-  // Golden cross in place, price above 50D (recovering through SMAs)
-  if (aboveSma50 && goldenCross) return 9;
+  // price > SMA50 > SMA200 (golden cross)
+  if (aboveSma50 && aboveSma200 && goldenCross) return 11;
 
-  // SMA50 converging toward SMA200 from below — imminent golden cross
-  if (convergingCross && (aboveSma50 || aboveSma200)) return 8;
+  // Golden cross but price only above 200D
+  if (aboveSma200 && goldenCross) return 9;
 
-  // Price reclaimed 200D MA (major recovery signal, death cross still in place)
+  // Golden cross, price above 50D but not 200D (recovering)
+  if (aboveSma50 && goldenCross) return 8;
+
+  // SMA50/200 converging (<2% apart) — imminent cross
+  const spread50_200 = sma50 > 0 && sma200 > 0
+    ? Math.abs(sma50 - sma200) / Math.min(sma50, sma200) * 100
+    : 100;
+  if (spread50_200 < 2 && (aboveSma50 || aboveSma200)) return 8;
+
+  // Price reclaimed 200D (major recovery, death cross still in place)
   if (aboveSma200 && !goldenCross) return 6;
 
-  // Price above 50D only, death cross below
-  if (aboveSma50 && !goldenCross) return 3;
+  // Price above 50D only
+  if (aboveSma50) return 3;
 
-  // Below both SMAs
   return 0;
 }
 
@@ -93,7 +110,7 @@ export function computeScore(stock: Omit<StockResult, 'multiBaggerScore' | 'scor
     volumeScore: volumeScore(stock.volumeRatio),
     sizeScore: sizeScore(stock.marketCapCategory),
     relativeStrengthScore: relativeStrengthScore(stock.return1M),
-    smaScore: smaAlignmentScore(stock.price, stock.sma50, stock.sma200),
+    smaScore: smaAlignmentScore(stock.price, stock.sma20, stock.sma50, stock.sma200, stock.smaSpread),
   };
 
   const total = clamp(

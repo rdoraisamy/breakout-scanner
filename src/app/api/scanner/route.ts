@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UNIQUE_TICKERS } from '@/data/tickers';
-import { fetchBatchedQuotes } from '@/lib/yahoo';
+import { fetchBatchedQuotes, enrichWithSma20 } from '@/lib/yahoo';
 import { cache, TTL } from '@/lib/cache';
 import type { ScannerResponse, StockResult, MarketCapCategory, EntryType, SmaFilter } from '@/lib/types';
 
@@ -24,6 +24,45 @@ export async function GET(req: NextRequest) {
     allStocks = await fetchBatchedQuotes(UNIQUE_TICKERS);
     cache.set(cacheKey, allStocks, TTL.SCANNER);
     console.log(`[scanner] Fetched ${allStocks.length} stocks`);
+  }
+
+  // ── Squeeze filters: two-pass enrichment ─────────────────────────────────────
+  // squeeze_* modes need SMA20 (not available in batch quotes).
+  // Pre-filter to candidates where SMA50/200 are already within 20%,
+  // then fetch chart data to compute real SMA20 and tighten the spread.
+  const isSqueezeFilter = smaFilter === 'squeeze_5' || smaFilter === 'squeeze_10' || smaFilter === 'squeeze_breakout';
+
+  if (isSqueezeFilter) {
+    const squeezeCacheKey = `scanner:squeeze:${smaFilter}`;
+    const cachedSqueeze = cache.get<StockResult[]>(squeezeCacheKey);
+
+    if (!cachedSqueeze) {
+      // Pre-filter: stocks with SMA50/200 spread < 20% (fast pre-selection)
+      const candidates = allStocks.filter(
+        (s) => s.sma50 > 0 && s.sma200 > 0 && s.smaSpread < 20
+      );
+      console.log(`[scanner] Squeeze pre-filter: ${candidates.length} candidates for SMA20 enrichment`);
+
+      // Enrich with real SMA20 from chart data (in-place mutation)
+      await enrichWithSma20(candidates);
+
+      // Cache enriched candidates for 5 minutes (same as scanner TTL)
+      cache.set(squeezeCacheKey, candidates, TTL.SCANNER);
+
+      // Patch the allStocks array so the regular filter path uses updated sma20/smaSpread
+      const symbolMap = new Map(candidates.map((s) => [s.symbol, s]));
+      for (let i = 0; i < allStocks.length; i++) {
+        const enriched = symbolMap.get(allStocks[i].symbol);
+        if (enriched) allStocks[i] = enriched;
+      }
+    } else {
+      // Use cached enriched data
+      const symbolMap = new Map(cachedSqueeze.map((s) => [s.symbol, s]));
+      for (let i = 0; i < allStocks.length; i++) {
+        const enriched = symbolMap.get(allStocks[i].symbol);
+        if (enriched) allStocks[i] = enriched;
+      }
+    }
   }
 
   // Apply filters
@@ -50,10 +89,24 @@ export async function GET(req: NextRequest) {
       const aboveSma50 = s.price > s.sma50;
       const aboveSma200 = s.price > s.sma200;
       const goldenCross = s.sma50 > s.sma200;
+      const aboveSma20 = s.sma20 > 0 && s.price > s.sma20;
+
       if (smaFilter === 'above_50' && !aboveSma50) return false;
       if (smaFilter === 'above_200' && !aboveSma200) return false;
       if (smaFilter === 'above_both' && !(aboveSma50 && aboveSma200)) return false;
       if (smaFilter === 'golden_cross' && !goldenCross) return false;
+
+      // Squeeze filters: require SMA20 enrichment to have run (sma20 > 0)
+      if (smaFilter === 'squeeze_5') {
+        if (s.sma20 === 0 || s.smaSpread >= 5) return false;
+      }
+      if (smaFilter === 'squeeze_10') {
+        if (s.sma20 === 0 || s.smaSpread >= 10) return false;
+      }
+      if (smaFilter === 'squeeze_breakout') {
+        // Squeezed MAs (within 10%) AND price has crossed above SMA20 (the breakout)
+        if (s.sma20 === 0 || s.smaSpread >= 10 || !aboveSma20) return false;
+      }
     }
 
     return true;

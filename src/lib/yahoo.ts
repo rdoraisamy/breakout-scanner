@@ -2,6 +2,7 @@ import YahooFinanceClass from 'yahoo-finance2';
 import type { StockResult, StockDetail, ChartDataPoint, EntryType } from './types';
 import { classifyMarketCap, sleep } from './utils';
 import { computeScore } from './scorer';
+import { cache, TTL } from './cache';
 
 // yahoo-finance2 v3 requires instantiation
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,6 +104,14 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
   const sma50 = (q.fiftyDayAverage as number | undefined) ?? 0;
   const sma200 = (q.twoHundredDayAverage as number | undefined) ?? 0;
 
+  // Initial spread using SMA50 and SMA200 (SMA20 added later by enrichWithSma20)
+  let smaSpread = 100;
+  if (sma50 > 0 && sma200 > 0) {
+    const hi = Math.max(sma50, sma200);
+    const lo = Math.min(sma50, sma200);
+    smaSpread = ((hi - lo) / lo) * 100;
+  }
+
   return {
     symbol,
     name: (q.shortName as string | undefined) ?? (q.longName as string | undefined) ?? symbol,
@@ -122,8 +131,10 @@ function parseQuote(raw: unknown, fallbackSymbol: string) {
     marketCapCategory,
     sector: (q.sector as string | undefined) ?? 'Unknown',
     industry: (q.industry as string | undefined) ?? 'Unknown',
+    sma20: 0,
     sma50,
     sma200,
+    smaSpread,
     return1M,
     return3M,
     return6M,
@@ -219,6 +230,48 @@ export async function fetchStockDetail(symbol: string): Promise<StockDetail | nu
   } catch (err) {
     console.error(`fetchStockDetail error for ${symbol}:`, err);
     return null;
+  }
+}
+
+// Two-pass enrichment: fetch chart data for squeeze-filter candidates and compute
+// the real SMA20.  Results are stored back on the stock objects in-place so the
+// scanner cache also benefits on subsequent requests.
+//
+// The pre-filter (smaSpread < 20%) keeps this set small (~20-60 stocks) so the
+// extra chart fetches are fast and cheap.
+export async function enrichWithSma20(stocks: StockResult[]): Promise<void> {
+  const CHART_BATCH = 10;
+  const CHART_DELAY_MS = 250;
+
+  for (let i = 0; i < stocks.length; i += CHART_BATCH) {
+    const batch = stocks.slice(i, i + CHART_BATCH);
+    if (i > 0) await sleep(CHART_DELAY_MS);
+
+    await Promise.allSettled(batch.map(async (stock) => {
+      const cacheKey = `chart:${stock.symbol}`;
+      let chartData = cache.get<ChartDataPoint[]>(cacheKey);
+
+      if (!chartData) {
+        chartData = await fetchChart(stock.symbol);
+        if (chartData.length > 0) cache.set(cacheKey, chartData, TTL.CHART);
+      }
+
+      if (!chartData || chartData.length < 20) return;
+
+      const closes = chartData.map((d) => d.close);
+
+      // Compute SMA20 from the most recent 20 closes
+      const sma20 = closes.slice(-20).reduce((s, p) => s + p, 0) / 20;
+      stock.sma20 = sma20;
+
+      // Recompute spread with all three SMAs now that we have SMA20
+      const vals = [sma20, stock.sma50, stock.sma200].filter((v) => v > 0);
+      if (vals.length >= 2) {
+        const hi = Math.max(...vals);
+        const lo = Math.min(...vals);
+        stock.smaSpread = lo > 0 ? ((hi - lo) / lo) * 100 : 100;
+      }
+    }));
   }
 }
 
